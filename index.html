@@ -497,6 +497,8 @@ function setupMic(lang) {
   recog.maxAlternatives = 1;
   let recognizing = false;
   let heldDown = false;
+  let hasStarted = false;
+  let stopRequested = false;
   let finalTranscript = '';
 
   async function handleTranscript(transcript) {
@@ -520,6 +522,11 @@ function setupMic(lang) {
   }
 
   recog.onstart = () => {
+    hasStarted = true;
+    if (stopRequested) {
+      recog.stop();
+      return;
+    }
     status.textContent = 'Listening...';
   };
   recog.onresult = (e) => {
@@ -533,6 +540,8 @@ function setupMic(lang) {
   recog.onend = () => {
     recognizing = false;
     heldDown = false;
+    hasStarted = false;
+    stopRequested = false;
     btn.classList.remove('listening');
     const transcript = finalTranscript.trim();
     finalTranscript = '';
@@ -546,6 +555,8 @@ function setupMic(lang) {
   recog.onerror = (e) => {
     recognizing = false;
     heldDown = false;
+    hasStarted = false;
+    stopRequested = false;
     btn.classList.remove('listening');
     status.textContent = 'Mic error: ' + e.error;
   };
@@ -555,16 +566,23 @@ function setupMic(lang) {
     if (recognizing) return;
     heldDown = true;
     recognizing = true;
+    hasStarted = false;
+    stopRequested = false;
     finalTranscript = '';
     recog.lang = lang === 'hi' ? LANGUAGES[otherLang].speechLang : 'en-US';
     btn.classList.add('listening');
-    status.textContent = 'Starting...';
+    status.textContent = 'Starting... (allow microphone access if asked)';
     try { recog.start(); } catch (err) { /* already started */ }
   };
   const stop = (ev) => {
     if (ev) ev.preventDefault();
     heldDown = false;
-    if (recognizing) recog.stop();
+    if (!recognizing) return;
+    if (hasStarted) {
+      recog.stop();
+    } else {
+      stopRequested = true;
+    }
   };
 
   btn.addEventListener('mousedown', start);
