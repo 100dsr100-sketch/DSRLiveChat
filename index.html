@@ -205,6 +205,23 @@
   }
   .input-row textarea:focus { outline: 2px solid #2f7dd6; }
 
+  .app-header {
+    flex: 0 0 auto;
+    text-align: center;
+    background: #111;
+    color: #fff;
+    padding: 6px 4px 4px;
+  }
+  .app-header-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .04em;
+  }
+  .app-header-subtitle {
+    font-size: 11px;
+    color: #aaa;
+  }
+
   .round-btn {
     flex: 0 0 auto;
     width: 42px;
@@ -237,6 +254,10 @@
 </div>
 
 <div id="app">
+  <div class="app-header">
+    <div class="app-header-title">DSR Systems</div>
+    <div class="app-header-subtitle">Live Language Translator</div>
+  </div>
   <div class="top-bar">
     <button class="speak-toggle on" id="speakToggle">&#128266; Speak translations</button>
     <select class="lang-select" id="otherLangSelect"></select>
