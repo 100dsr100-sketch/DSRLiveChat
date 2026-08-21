@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="referrer" content="no-referrer">
+<title>DSR Live Chat Translator</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #111;
+    touch-action: manipulation;
+  }
+  #lockScreen {
+    position: fixed; inset: 0;
+    background: #111;
+    color: #eee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  }
+  #lockScreen.hidden { display: none; }
+  #lockBox {
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 12px;
+    padding: 24px;
+    width: 260px;
+    text-align: center;
+  }
+  #lockBox input {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: 1px solid #555;
+    background: #333;
+    color: #fff;
+    margin: 12px 0;
+  }
+  #lockBox button {
+    width: 100%;
+    padding: 10px;
+    font-size: 15px;
+    border-radius: 8px;
+    border: none;
+    background: #2f7dd6;
+    color: #fff;
+    cursor: pointer;
+  }
+  #lockError {
+    color: #e0433b;
+    font-size: 12px;
+    min-height: 16px;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+  .top-bar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: #222;
+    row-gap: 2px;
+  }
+  .speak-status {
+    flex: 0 0 100%;
+    text-align: center;
+    font-size: 11px;
+    color: #e0433b;
+    min-height: 14px;
+  }
+  .speak-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #ccc;
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 14px;
+    padding: 4px 12px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .speak-toggle.on { background: #2f7dd6; border-color: #2f7dd6; color: #fff; }
+  .lang-select {
+    font-size: 13px;
+    color: #eee;
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 14px;
+    padding: 4px 10px;
+    margin-left: 8px;
+  }
+  .panel {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+  }
+  .panel-en { background: #eef3f8; }
+  .panel-hi { background: #fdf0ee; }
+
+  .panel-header {
+    padding: 6px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    color: #666;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: 0 0 auto;
+  }
+  .panel-header .clear-btn {
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: none;
+    color: #999;
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    padding: 2px 8px;
+    cursor: pointer;
+  }
+
+  .messages {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+  }
+  .bubble {
+    max-width: 78%;
+    padding: 8px 12px;
+    border-radius: 16px;
+    font-size: 16px;
+    line-height: 1.35;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+  }
+  .bubble.own {
+    align-self: flex-end;
+    background: #2f7dd6;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble.other {
+    align-self: flex-start;
+    background: #e2e5ea;
+    color: #222;
+    border-bottom-left-radius: 4px;
+  }
+
+  .mic-status {
+    flex: 0 0 auto;
+    min-height: 16px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: #c0392b;
+  }
+  .input-row {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.6);
+  }
+  .input-row textarea {
+    flex: 1 1 auto;
+    resize: none;
+    border: 1px solid #ccc;
+    border-radius: 18px;
+    padding: 9px 14px;
+    font-size: 16px;
+    font-family: inherit;
+    max-height: 90px;
+    line-height: 1.3;
+  }
+  .input-row textarea:focus { outline: 2px solid #2f7dd6; }
+
+  .round-btn {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .send-btn { background: #2f7dd6; color: #fff; }
+  .mic-btn { background: #ddd; color: #333; }
+  .mic-btn.listening { background: #e0433b; color: #fff; }
+  .mic-btn:disabled { opacity: 0.35; cursor: default; }
+</style>
+</head>
+<body>
+
+<div id="lockScreen">
+  <div id="lockBox">
+    <div>Enter password</div>
+    <input type="password" id="lockInput" autocomplete="off">
+    <button id="lockBtn">Unlock</button>
+    <div id="lockError"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="top-bar">
+    <button class="speak-toggle on" id="speakToggle">&#128266; Speak translations</button>
+    <select class="lang-select" id="otherLangSelect"></select>
+    <div class="speak-status" id="speakStatus"></div>
+  </div>
+  <div class="panel panel-en">
+    <div class="panel-header">
+      <span>English</span>
+      <button class="clear-btn" onclick="clearMessages()">Clear</button>
+    </div>
+    <div class="messages" id="messages-en"></div>
+    <div class="mic-status" id="mic-status-en"></div>
+    <div class="input-row">
+      <button class="round-btn mic-btn" id="mic-en">&#127908;</button>
+      <textarea id="input-en" rows="1" placeholder="Type in English..."></textarea>
+      <button class="round-btn send-btn" id="send-en">&#10148;</button>
+    </div>
+  </div>
+
+  <div class="panel panel-hi">
+    <div class="panel-header">
+      <span id="panel-hi-label">Hindi</span>
+      <button class="clear-btn" onclick="clearMessages()">Clear</button>
+    </div>
+    <div class="messages" id="messages-hi"></div>
+    <div class="mic-status" id="mic-status-hi"></div>
+    <div class="input-row">
+      <button class="round-btn mic-btn" id="mic-hi">&#127908;</button>
+      <textarea id="input-hi" rows="1" placeholder="Type in Hindi..."></textarea>
+      <button class="round-btn send-btn" id="send-hi">&#10148;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- access lock ---------------------------------------------------------
+// NOTE: this is a casual deterrent only (visible in page source), not real
+// security. Change ACCESS_PASSWORD below to whatever you like.
+const ACCESS_PASSWORD = 'DSRChat1';
+const LOCK_STORAGE_KEY = 'dsrLiveChatUnlocked';
+
+const lockScreen = document.getElementById('lockScreen');
+const lockInput = document.getElementById('lockInput');
+const lockBtn = document.getElementById('lockBtn');
+const lockError = document.getElementById('lockError');
+
+function tryUnlock() {
+  if (lockInput.value === ACCESS_PASSWORD) {
+    localStorage.setItem(LOCK_STORAGE_KEY, '1');
+    lockScreen.classList.add('hidden');
+  } else {
+    lockError.textContent = 'Incorrect password';
+  }
+}
+lockBtn.addEventListener('click', tryUnlock);
+lockInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
+
+if (localStorage.getItem(LOCK_STORAGE_KEY) === '1') {
+  lockScreen.classList.add('hidden');
+} else {
+  lockInput.focus();
+}
+
+// --- transliteration proxy -----------------------------------------------
+// Fill this in once the Cloudflare Worker is deployed, e.g.
+// 'https://dsrlivechat-translit.yoursubdomain.workers.dev'
+// Until then, typed Hindi just skips the transliteration boost (same
+// graceful fallback as any Latin-script language) - voice input is
+// unaffected either way.
+const TRANSLIT_WORKER_URL = '';
+
+// --- app -------------------------------------------------------------
+const messages = [];
+
+const LANGUAGES = {
+  hi: { name: 'Hindi', speechLang: 'hi-IN', hasNonLatinScript: true, itc: 'hi-t-i0-und' },
+  it: { name: 'Italian', speechLang: 'it-IT', hasNonLatinScript: false },
+  es: { name: 'Spanish', speechLang: 'es-ES', hasNonLatinScript: false },
+  fr: { name: 'French', speechLang: 'fr-FR', hasNonLatinScript: false },
+  de: { name: 'German', speechLang: 'de-DE', hasNonLatinScript: false },
+  pt: { name: 'Portuguese', speechLang: 'pt-PT', hasNonLatinScript: false },
+};
+
+let otherLang = 'hi';
+
+async function translateText(sourceLang, targetLang, text, wantRomanization) {
+  const dtParams = wantRomanization ? '&dt=t&dt=rm' : '&dt=t';
+  const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=' +
+    sourceLang + '&tl=' + targetLang + dtParams + '&q=' + encodeURIComponent(text);
+  const res = await fetch(url);
+  const data = await res.json();
+  let scriptText = '';
+  let romanized = '';
+  for (const seg of data[0]) {
+    if (typeof seg[0] === 'string') {
+      scriptText += seg[0];
+    } else if (seg.length >= 3 && typeof seg[2] === 'string') {
+      romanized = seg[2];
+    }
+  }
+  return { scriptText, romanized };
+}
+
+async function transliterateToNativeScript(romanizedText, itc) {
+  if (!TRANSLIT_WORKER_URL) return null;
+  const res = await fetch(TRANSLIT_WORKER_URL + '?text=' + encodeURIComponent(romanizedText) + '&itc=' + encodeURIComponent(itc));
+  const data = await res.json();
+  if (!Array.isArray(data) || data[0] !== 'SUCCESS') return null;
+  return data[1].map((seg) => seg[1][0]).join(' ').trim();
+}
+
+async function sendOtherMessage(displayText) {
+  const info = LANGUAGES[otherLang];
+  let sourceForTranslation = displayText;
+  if (info.hasNonLatinScript) {
+    try {
+      const converted = await transliterateToNativeScript(displayText, info.itc);
+      if (converted) sourceForTranslation = converted;
+    } catch (err) {
+      console.error('transliteration failed, falling back to romanized text', err);
+    }
+  }
+  await sendMessage('hi', displayText, sourceForTranslation);
+}
+
+let speakEnabled = true;
+const speakToggleBtn = document.getElementById('speakToggle');
+speakToggleBtn.addEventListener('click', () => {
+  speakEnabled = !speakEnabled;
+  speakToggleBtn.classList.toggle('on', speakEnabled);
+  speakToggleBtn.innerHTML = speakEnabled ? '&#128266; Speak translations' : '&#128263; Speak translations';
+});
+
+const speakStatusEl = document.getElementById('speakStatus');
+
+function speakText(langCode, text) {
+  if (!speakEnabled || !text) return;
+  speakStatusEl.textContent = '';
+  const url = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=' +
+    langCode + '&q=' + encodeURIComponent(text);
+  const audio = new Audio();
+  audio.referrerPolicy = 'no-referrer';
+  audio.src = url;
+  let fallbackTried = false;
+
+  const runFallback = (reason) => {
+    if (fallbackTried) return;
+    fallbackTried = true;
+    console.warn('Google TTS playback failed (' + reason + '), falling back to local voice');
+    try {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = langCode === 'en' ? 'en-US' : (LANGUAGES[langCode]?.speechLang || langCode);
+      utter.onerror = (e) => {
+        speakStatusEl.textContent = 'Speech failed (' + reason + ' + local voice: ' + e.error + ')';
+      };
+      speechSynthesis.speak(utter);
+      speakStatusEl.textContent = 'Google voice unavailable (' + reason + ') - using local voice instead';
+    } catch (err2) {
+      speakStatusEl.textContent = 'Speech failed: ' + reason + ' / ' + err2.message;
+      console.error('speech fallback failed', err2);
+    }
+  };
+
+  audio.addEventListener('error', () => runFallback('audio load error'));
+  audio.play().catch((err) => runFallback(err.name + ': ' + err.message));
+}
+
+function scrollToBottom(el) {
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderPanel(lang) {
+  const container = document.getElementById('messages-' + lang);
+  container.innerHTML = '';
+  for (const m of messages) {
+    const bubble = document.createElement('div');
+    const isOwn = m.sender === lang;
+    bubble.className = 'bubble ' + (isOwn ? 'own' : 'other');
+    bubble.textContent = isOwn ? m.text : m.otherText;
+    container.appendChild(bubble);
+  }
+  scrollToBottom(container);
+}
+
+function render() {
+  renderPanel('en');
+  renderPanel('hi');
+}
+
+function clearMessages() {
+  messages.length = 0;
+  render();
+}
+
+async function sendMessage(sender, rawText, sourceOverride) {
+  rawText = rawText.trim();
+  if (!rawText) return;
+  const sourceText = (sourceOverride && sourceOverride.trim()) ? sourceOverride.trim() : rawText;
+
+  let otherText = '';
+  let otherSpeechText = '';
+  const targetLang = sender === 'en' ? otherLang : 'en';
+  try {
+    if (sender === 'en') {
+      const wantRoman = LANGUAGES[otherLang].hasNonLatinScript;
+      const { romanized, scriptText } = await translateText('en', otherLang, sourceText, wantRoman);
+      otherText = (wantRoman && romanized) ? romanized : scriptText;
+      otherSpeechText = scriptText || romanized;
+    } else {
+      const { scriptText } = await translateText(otherLang, 'en', sourceText, false);
+      otherText = scriptText;
+      otherSpeechText = scriptText;
+    }
+  } catch (err) {
+    otherText = '[translation error]';
+    console.error(err);
+  }
+
+  messages.push({ sender, text: rawText, otherText });
+  render();
+  speakText(targetLang, otherSpeechText);
+}
+
+function setupTextInput(lang) {
+  const input = document.getElementById('input-' + lang);
+  const sendBtn = document.getElementById('send-' + lang);
+
+  const doSend = () => {
+    const val = input.value;
+    input.value = '';
+    input.style.height = 'auto';
+    if (lang === 'hi') {
+      sendOtherMessage(val);
+    } else {
+      sendMessage(lang, val);
+    }
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      doSend();
+    }
+  });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 90) + 'px';
+  });
+  sendBtn.addEventListener('click', doSend);
+}
+
+function setupMic(lang) {
+  const btn = document.getElementById('mic-' + lang);
+  const status = document.getElementById('mic-status-' + lang);
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    btn.disabled = true;
+    btn.title = 'Speech recognition not supported in this browser';
+    status.textContent = 'Speech recognition not supported in this browser';
+    return;
+  }
+
+  const recog = new SpeechRecognition();
+  recog.continuous = true;
+  recog.interimResults = false;
+  recog.maxAlternatives = 1;
+  let recognizing = false;
+  let heldDown = false;
+  let finalTranscript = '';
+
+  async function handleTranscript(transcript) {
+    if (!transcript) return;
+    if (lang === 'hi') {
+      const info = LANGUAGES[otherLang];
+      if (info.hasNonLatinScript) {
+        try {
+          const { romanized, scriptText } = await translateText(otherLang, otherLang, transcript, true);
+          const displayText = romanized || scriptText || transcript;
+          sendMessage('hi', displayText, transcript);
+        } catch (err) {
+          sendMessage('hi', transcript, transcript);
+        }
+      } else {
+        sendMessage('hi', transcript, transcript);
+      }
+    } else {
+      sendMessage('en', transcript);
+    }
+  }
+
+  recog.onstart = () => {
+    status.textContent = 'Listening...';
+  };
+  recog.onresult = (e) => {
+    status.textContent = 'Listening...';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        finalTranscript += e.results[i][0].transcript + ' ';
+      }
+    }
+  };
+  recog.onend = () => {
+    recognizing = false;
+    heldDown = false;
+    btn.classList.remove('listening');
+    const transcript = finalTranscript.trim();
+    finalTranscript = '';
+    if (transcript) {
+      status.textContent = '';
+      handleTranscript(transcript);
+    } else {
+      status.textContent = 'No speech detected - try holding the button a little longer.';
+    }
+  };
+  recog.onerror = (e) => {
+    recognizing = false;
+    heldDown = false;
+    btn.classList.remove('listening');
+    status.textContent = 'Mic error: ' + e.error;
+  };
+
+  const start = (ev) => {
+    ev.preventDefault();
+    if (recognizing) return;
+    heldDown = true;
+    recognizing = true;
+    finalTranscript = '';
+    recog.lang = lang === 'hi' ? LANGUAGES[otherLang].speechLang : 'en-US';
+    btn.classList.add('listening');
+    status.textContent = 'Starting...';
+    try { recog.start(); } catch (err) { /* already started */ }
+  };
+  const stop = (ev) => {
+    if (ev) ev.preventDefault();
+    heldDown = false;
+    if (recognizing) recog.stop();
+  };
+
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('touchstart', start, { passive: false });
+  btn.addEventListener('mouseup', stop);
+  btn.addEventListener('touchend', stop, { passive: false });
+  btn.addEventListener('mouseleave', () => { if (heldDown) stop(); });
+}
+
+function updateOtherLangUI() {
+  const info = LANGUAGES[otherLang];
+  document.getElementById('panel-hi-label').textContent = info.name;
+  document.getElementById('input-hi').placeholder = 'Type in ' + info.name + '...';
+}
+
+const otherLangSelect = document.getElementById('otherLangSelect');
+for (const code in LANGUAGES) {
+  const opt = document.createElement('option');
+  opt.value = code;
+  opt.textContent = LANGUAGES[code].name;
+  otherLangSelect.appendChild(opt);
+}
+otherLangSelect.value = otherLang;
+otherLangSelect.addEventListener('change', () => {
+  otherLang = otherLangSelect.value;
+  updateOtherLangUI();
+  clearMessages();
+});
+
+setupTextInput('en');
+setupTextInput('hi');
+setupMic('en');
+setupMic('hi');
+updateOtherLangUI();
+render();
+</script>
+</body>
+</html>
