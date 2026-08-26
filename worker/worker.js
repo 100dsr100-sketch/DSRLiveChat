@@ -53,6 +53,47 @@ export class ChatRoom {
 
 const CHAT_ROOM_NAME = 'dsr-livechat-default-room';
 
+// Cloudflare Workers AI's whisper-large-v3-turbo wants the raw audio bytes
+// as a base64 string, not a byte array - btoa() only accepts a "binary
+// string" (one char per byte), so build that up in chunks to avoid blowing
+// the call stack on String.fromCharCode.apply for larger recordings.
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function handleTranscribe(request, env, url) {
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+  try {
+    const lang = url.searchParams.get('lang') || undefined;
+    const arrayBuffer = await request.arrayBuffer();
+    const input = { audio: arrayBufferToBase64(arrayBuffer) };
+    if (lang) input.language = lang;
+    const result = await env.AI.run('@cf/openai/whisper-large-v3-turbo', input);
+    return new Response(JSON.stringify({ text: result.text || '' }), {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: (err && err.message) || String(err) }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -66,9 +107,14 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
         },
       });
+    }
+
+    if (url.pathname === '/transcribe') {
+      return handleTranscribe(request, env, url);
     }
 
     const text = url.searchParams.get('text') || '';
