@@ -307,9 +307,10 @@
 
 <div id="roleScreen" class="hidden">
   <div id="roleBox">
-    <div class="role-title">Who's speaking on this device?</div>
-    <button class="role-btn" id="roleBtnEn">English</button>
-    <button class="role-btn" id="roleBtnOther">The other language</button>
+    <div class="role-title">How are you using this?</div>
+    <button class="role-btn" id="roleBtnEn">Two devices - I'm English</button>
+    <button class="role-btn" id="roleBtnOther">Two devices - I pick my language</button>
+    <button class="role-btn" id="roleBtnSingle">One device - both languages here</button>
   </div>
 </div>
 
@@ -388,7 +389,7 @@ function afterUnlock() {
   if (role) {
     appEl.classList.remove('hidden');
     setupForRole();
-    connectWS();
+    if (role !== 'single') connectWS();
   } else {
     roleScreen.classList.remove('hidden');
   }
@@ -400,10 +401,11 @@ function applyRole(r) {
   roleScreen.classList.add('hidden');
   appEl.classList.remove('hidden');
   setupForRole();
-  connectWS();
+  if (role !== 'single') connectWS();
 }
 document.getElementById('roleBtnEn').addEventListener('click', () => applyRole('en'));
 document.getElementById('roleBtnOther').addEventListener('click', () => applyRole('other'));
+document.getElementById('roleBtnSingle').addEventListener('click', () => applyRole('single'));
 document.getElementById('changeRoleLink').addEventListener('click', () => {
   if (confirm('Switch this device to the other role? You will need to pick again.')) {
     localStorage.removeItem(ROLE_STORAGE_KEY);
@@ -446,7 +448,7 @@ function connectWS() {
   ws.onopen = () => {
     reconnectDelay = 1000;
     setConnStatus('Connected');
-    if (role === 'en') sendConfig();
+    if (role === 'other') sendConfig();
   };
   ws.onmessage = (ev) => handleIncoming(ev.data);
   ws.onclose = () => {
@@ -458,7 +460,7 @@ function connectWS() {
 }
 
 function sendConfig() {
-  if (role === 'en' && ws && ws.readyState === WebSocket.OPEN) {
+  if (role === 'other' && ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'config', otherLang }));
   }
 }
@@ -476,7 +478,7 @@ function handleIncoming(raw) {
   let data;
   try { data = JSON.parse(raw); } catch (err) { return; }
   if (data.type === 'config') {
-    if (role === 'other') {
+    if (role === 'en') {
       otherLang = data.otherLang;
       updateOtherLangUI();
       otherLangSelect.value = otherLang;
@@ -591,7 +593,12 @@ function renderPanel(lang) {
 }
 
 function render() {
-  renderPanel(panelKey);
+  if (role === 'single') {
+    renderPanel('en');
+    renderPanel('hi');
+  } else {
+    renderPanel(panelKey);
+  }
 }
 
 function clearMessages() {
@@ -599,18 +606,19 @@ function clearMessages() {
   render();
 }
 
-// rawText is what gets shown on this device's own bubble; sourceOverride,
-// when given, is already-native-script text (from speech recognition) that
-// should be translated directly, skipping the romanized-typing transliteration
-// boost below.
-async function composeAndSend(rawText, sourceOverride) {
+// sender is 'en' or 'hi' - which panel this message came from. rawText is
+// what gets shown on the sender's own bubble; sourceOverride, when given, is
+// already-native-script text (from speech recognition) that should be
+// translated directly, skipping the romanized-typing transliteration boost
+// below.
+async function composeAndSend(sender, rawText, sourceOverride) {
   rawText = rawText.trim();
   if (!rawText) return;
   let sourceText = (sourceOverride && sourceOverride.trim()) ? sourceOverride.trim() : rawText;
 
   let otherText = '';
   try {
-    if (role === 'en') {
+    if (sender === 'en') {
       const wantRoman = LANGUAGES[otherLang].hasNonLatinScript;
       const { romanized, scriptText } = await translateText('en', otherLang, sourceText, wantRoman);
       otherText = (wantRoman && romanized) ? romanized : scriptText;
@@ -632,9 +640,20 @@ async function composeAndSend(rawText, sourceOverride) {
     console.error(err);
   }
 
-  messages.push({ sender: role, text: rawText, otherText });
-  render();
-  sendChatOverWs(rawText, otherText);
+  messages.push({ sender, text: rawText, otherText });
+
+  if (role === 'single') {
+    // Both languages live on this one device - render both panels and speak
+    // the translation out loud right away, same as the original app.
+    render();
+    const targetLang = sender === 'en' ? otherLang : 'en';
+    speakText(targetLang, otherText);
+  } else {
+    // Paired mode - only this device's own panel is shown; the peer device
+    // speaks the translation when it receives it over the WebSocket.
+    render();
+    sendChatOverWs(rawText, otherText);
+  }
 }
 
 function setupTextInput(lang) {
@@ -645,7 +664,7 @@ function setupTextInput(lang) {
     const val = input.value;
     input.value = '';
     input.style.height = 'auto';
-    composeAndSend(val);
+    composeAndSend(lang, val);
   };
 
   input.addEventListener('keydown', (e) => {
@@ -684,21 +703,21 @@ function setupMic(lang) {
 
   async function handleTranscript(transcript) {
     if (!transcript) return;
-    if (role === 'other') {
+    if (lang === 'hi') {
       const info = LANGUAGES[otherLang];
       if (info.hasNonLatinScript) {
         try {
           const { romanized, scriptText } = await translateText(otherLang, otherLang, transcript, true);
           const displayText = romanized || scriptText || transcript;
-          composeAndSend(displayText, transcript);
+          composeAndSend(lang, displayText, transcript);
         } catch (err) {
-          composeAndSend(transcript, transcript);
+          composeAndSend(lang, transcript, transcript);
         }
       } else {
-        composeAndSend(transcript, transcript);
+        composeAndSend(lang, transcript, transcript);
       }
     } else {
-      composeAndSend(transcript);
+      composeAndSend(lang, transcript);
     }
   }
 
@@ -794,18 +813,41 @@ otherLangSelect.addEventListener('change', () => {
   sendConfig();
 });
 
-// --- role-based single-panel setup ----------------------------------
+// --- mode-based setup --------------------------------------------------
+// role is 'single' (both languages on this one device, no relay - the
+// original app), or 'en' / 'other' (paired two-device mode, this device
+// shows only its own panel and syncs over the WebSocket relay).
 let panelKey = 'en';
 let roleSetupDone = false;
 function setupForRole() {
   if (roleSetupDone) return;
   roleSetupDone = true;
+
+  if (role === 'single') {
+    document.getElementById('panel-en').style.display = 'flex';
+    document.getElementById('panel-hi').style.display = 'flex';
+    otherLangSelect.disabled = false;
+    otherLangSelect.title = '';
+    updateOtherLangUI();
+    setupTextInput('en');
+    setupTextInput('hi');
+    setupMic('en');
+    setupMic('hi');
+    render();
+    return;
+  }
+
   panelKey = role === 'en' ? 'en' : 'hi';
   document.getElementById('panel-en').style.display = role === 'en' ? 'flex' : 'none';
   document.getElementById('panel-hi').style.display = role === 'other' ? 'flex' : 'none';
-  if (role === 'other') {
+  if (role === 'en') {
+    // The English side is fixed - the other-language person picks their own
+    // language and it syncs over to here.
     otherLangSelect.disabled = true;
-    otherLangSelect.title = 'Set by the English side';
+    otherLangSelect.title = 'Set by the other side';
+  } else {
+    otherLangSelect.disabled = false;
+    otherLangSelect.title = '';
   }
   updateOtherLangUI();
   setupTextInput(panelKey);
