@@ -379,6 +379,26 @@ function tryUnlock() {
 lockBtn.addEventListener('click', tryUnlock);
 lockInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
 
+// --- keep the screen awake while the app is in use -----------------------
+// Without this, Android/iOS will lock the screen mid-conversation, which
+// defeats a hands-free live-translation app. Not supported everywhere
+// (notably older Safari), so this is a best-effort enhancement - fails
+// silently where it's unavailable.
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (err) {
+    // e.g. battery saver mode, or tab not visible yet - harmless, we
+    // retry below whenever the tab becomes visible again.
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && role) requestWakeLock();
+});
+
 // --- device role (which side of the two-device conversation this is) ----
 const ROLE_STORAGE_KEY = 'dsrLiveChatRole';
 const roleScreen = document.getElementById('roleScreen');
@@ -390,6 +410,7 @@ function afterUnlock() {
     appEl.classList.remove('hidden');
     setupForRole();
     if (role !== 'single') connectWS();
+    requestWakeLock();
   } else {
     roleScreen.classList.remove('hidden');
   }
@@ -402,6 +423,7 @@ function applyRole(r) {
   appEl.classList.remove('hidden');
   setupForRole();
   if (role !== 'single') connectWS();
+  requestWakeLock();
 }
 document.getElementById('roleBtnEn').addEventListener('click', () => applyRole('en'));
 document.getElementById('roleBtnOther').addEventListener('click', () => applyRole('other'));
