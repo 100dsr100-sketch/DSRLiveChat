@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "DSR Live Chat Translator",
   "short_name": "LiveChat",
   "start_url": "./index.html",
